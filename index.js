@@ -4,7 +4,7 @@ const path = require('path');
 
 // === CONFIG ===
 // Replace these with your actual values
-const token = process.env.token;
+const token = process.env.TOKEN;
 const LOG_CHANNEL_ID = '1520333813794738246';
 const CLIENT_ID = '1513576938118189257';
 
