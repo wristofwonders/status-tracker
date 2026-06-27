@@ -11,11 +11,12 @@ const path = require('path');
 
 // === CONFIG ===
 const token = process.env.TOKEN;
-const LOG_CHANNEL_ID = '1510333813794738246';
 const CLIENT_ID = '1513576938118189257';
+const LOG_CHANNEL_ID = '1510333813794738246';
 const ACCEPT_ROLE_ID = '1513576678486573258';
 const ACCEPT_ANNOUNCE_CHANNEL_ID = '1513632041277587658';
 
+// === CLIENT ===
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -23,11 +24,11 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
-// === DATABASE SETUP ===
+// === DATABASE ===
 const dbPath = path.resolve(__dirname, 'status.db');
 const db = new sqlite3.Database(dbPath);
 
@@ -45,6 +46,37 @@ CREATE TABLE IF NOT EXISTS status_tracker (
     voiceStart INTEGER
 )
 `);
+
+function ensureUserRow(userId) {
+    db.run('INSERT OR IGNORE INTO status_tracker (userId) VALUES (?)', [userId]);
+}
+
+function startStatus(userId, status) {
+    ensureUserRow(userId);
+    db.run(
+        'UPDATE status_tracker SET lastStatus = ?, statusStart = ? WHERE userId = ?',
+        [status, Date.now(), userId]
+    );
+}
+
+function endStatus(userId, callback) {
+    db.get(
+        'SELECT lastStatus, statusStart FROM status_tracker WHERE userId = ?',
+        [userId],
+        (err, row) => {
+            if (!row || !row.statusStart) return;
+
+            const duration = Math.floor((Date.now() - row.statusStart) / 1000);
+            const col = row.lastStatus + 'Seconds';
+
+            db.run(
+                `UPDATE status_tracker SET ${col} = ${col} + ?, statusStart = ?, lastStatus = ? WHERE userId = ?`,
+                [duration, Date.now(), row.lastStatus, userId],
+                () => callback && callback(duration, row.lastStatus)
+            );
+        }
+    );
+}
 
 // === SLASH COMMANDS ===
 const commands = [
@@ -77,14 +109,14 @@ const commands = [
         .addIntegerOption(opt =>
             opt.setName('level')
                .setDescription('Player level')
-               .setRequired(true)
+               .setRequired(false)
         )
         .addIntegerOption(opt =>
             opt.setName('winrate')
                .setDescription('Player winrate (0-100)')
-               .setRequired(true)
+               .setRequired(false)
         )
-].map(cmd => cmd.toJSON());
+].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
 (async () => {
@@ -96,51 +128,18 @@ const rest = new REST({ version: '10' }).setToken(token);
     }
 })();
 
-// === HELPER FUNCTIONS ===
-function ensureUserRow(userId) {
-    db.run('INSERT OR IGNORE INTO status_tracker (userId) VALUES (?)', [userId]);
-}
-
-function startStatus(userId, status) {
-    ensureUserRow(userId);
-    db.run(
-        'UPDATE status_tracker SET lastStatus = ?, statusStart = ? WHERE userId = ?',
-        [status, Date.now(), userId]
-    );
-}
-
-function endStatus(userId, callback) {
-    db.get(
-        'SELECT lastStatus, statusStart FROM status_tracker WHERE userId = ?',
-        [userId],
-        (err, row) => {
-            if (err || !row || !row.statusStart || !row.lastStatus) return;
-            const duration = Math.floor((Date.now() - row.statusStart) / 1000);
-            const col = row.lastStatus + 'Seconds';
-            db.run(
-                `UPDATE status_tracker SET ${col} = ${col} + ?, statusStart = ?, lastStatus = ? WHERE userId = ?`,
-                [duration, Date.now(), row.lastStatus, userId],
-                () => {
-                    if (callback) callback(duration, row.lastStatus);
-                }
-            );
-        }
-    );
-}
-
 // === MESSAGE HANDLER ===
 client.on('messageCreate', async msg => {
     if (msg.author.bot) return;
 
-    // Track messages
     ensureUserRow(msg.author.id);
     db.run('UPDATE status_tracker SET messages = messages + 1 WHERE userId = ?', [msg.author.id]);
 
-    // Auto reply when bot is mentioned
     if (msg.mentions.has(client.user)) {
         const onlineCount = msg.guild.members.cache.filter(
             m => m.presence?.status === 'online'
         ).size;
+
         const time = new Date().toLocaleTimeString();
 
         msg.reply(
@@ -151,17 +150,17 @@ client.on('messageCreate', async msg => {
     }
 });
 
-// === VOICE HANDLER ===
+// === VOICE TRACKING ===
 client.on('voiceStateUpdate', (oldState, newState) => {
     const userId = newState.id;
     ensureUserRow(userId);
+
     db.get(
         'SELECT voiceStart, voiceSeconds FROM status_tracker WHERE userId = ?',
         [userId],
         (err, row) => {
             if (!row) return;
 
-            // Joined voice
             if (!oldState.channel && newState.channel) {
                 db.run('UPDATE status_tracker SET voiceStart = ? WHERE userId = ?', [
                     Date.now(),
@@ -169,55 +168,56 @@ client.on('voiceStateUpdate', (oldState, newState) => {
                 ]);
             }
 
-            // Left voice
             if (oldState.channel && !newState.channel && row.voiceStart) {
                 const duration = Math.floor((Date.now() - row.voiceStart) / 1000);
-                const totalVoice = (row.voiceSeconds || 0) + duration;
+                const total = (row.voiceSeconds || 0) + duration;
+
                 db.run(
                     'UPDATE status_tracker SET voiceSeconds = ?, voiceStart = NULL WHERE userId = ?',
-                    [totalVoice, userId]
+                    [total, userId]
                 );
             }
         }
     );
 });
 
-// === PRESENCE HANDLER ===
-client.on('presenceUpdate', (oldPresence, newPresence) => {
-    if (!newPresence || !newPresence.guild) return;
-    const userId = newPresence.user.id;
+// === PRESENCE TRACKING ===
+client.on('presenceUpdate', (oldP, newP) => {
+    if (!newP || !newP.guild) return;
+
+    const userId = newP.user.id;
     ensureUserRow(userId);
 
-    const oldStatus = oldPresence?.status;
-    const newStatus = newPresence.status;
+    const oldStatus = oldP?.status;
+    const newStatus = newP.status;
+
     if (oldStatus === newStatus) return;
 
     endStatus(userId, (duration, prevStatus) => {
-        const logChannel = newPresence.guild.channels.cache.get(LOG_CHANNEL_ID);
-        if (!logChannel) {
-            startStatus(userId, newStatus);
-            return;
+        const logChannel = newP.guild.channels.cache.get(LOG_CHANNEL_ID);
+
+        if (logChannel) {
+            const embed = new EmbedBuilder()
+                .setTitle('Status Changed')
+                .setDescription(
+                    `${newP.user.tag} changed from **${prevStatus}** to **${newStatus}**`
+                )
+                .addFields({
+                    name: 'Time in previous status',
+                    value: `${duration} seconds`,
+                    inline: true
+                })
+                .setColor('Blue')
+                .setTimestamp();
+
+            logChannel.send({ embeds: [embed] });
         }
 
-        const embed = new EmbedBuilder()
-            .setTitle('Status Changed')
-            .setDescription(
-                `${newPresence.user.tag} changed from **${prevStatus}** to **${newStatus}**`
-            )
-            .addFields({
-                name: 'Time in previous status',
-                value: `${duration} seconds`,
-                inline: true
-            })
-            .setColor('Blue')
-            .setTimestamp();
-
-        logChannel.send({ embeds: [embed] });
         startStatus(userId, newStatus);
     });
 });
 
-// === INTERACTION HANDLER ===
+// === INTERACTIONS ===
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -230,18 +230,18 @@ client.on('interactionCreate', async interaction => {
             'SELECT * FROM status_tracker WHERE userId = ?',
             [target.id],
             (err, row) => {
-                if (err || !row)
+                if (!row)
                     return interaction.reply(`${target.tag} has no recorded activity.`);
 
                 const embed = new EmbedBuilder()
                     .setTitle(`Status Stats for ${target.tag}`)
                     .addFields(
-                        { name: 'Online Time', value: `${row.onlineSeconds}s`, inline: true },
-                        { name: 'Idle Time', value: `${row.idleSeconds}s`, inline: true },
-                        { name: 'DND Time', value: `${row.dndSeconds}s`, inline: true },
-                        { name: 'Offline Time', value: `${row.offlineSeconds}s`, inline: true },
-                        { name: 'Messages Sent', value: `${row.messages}`, inline: true },
-                        { name: 'Voice Time', value: `${row.voiceSeconds}s`, inline: true }
+                        { name: 'Online', value: `${row.onlineSeconds}s`, inline: true },
+                        { name: 'Idle', value: `${row.idleSeconds}s`, inline: true },
+                        { name: 'DND', value: `${row.dndSeconds}s`, inline: true },
+                        { name: 'Offline', value: `${row.offlineSeconds}s`, inline: true },
+                        { name: 'Messages', value: `${row.messages}`, inline: true },
+                        { name: 'Voice', value: `${row.voiceSeconds}s`, inline: true }
                     )
                     .setColor('Green')
                     .setTimestamp();
@@ -265,12 +265,11 @@ client.on('interactionCreate', async interaction => {
         const winrate = interaction.options.getInteger('winrate');
 
         const member = await interaction.guild.members.fetch(user.id);
-
         await member.roles.add(ACCEPT_ROLE_ID);
 
         let extra = '';
-        if (level > 200) extra += ' (high lvl)';
-        if (winrate > 70) extra += ' (high wr)';
+        if (level !== null && level > 200) extra += ' (high lvl)';
+        if (winrate !== null && winrate > 70) extra += ' (high wr)';
 
         const announceChannel = interaction.guild.channels.cache.get(
             ACCEPT_ANNOUNCE_CHANNEL_ID
@@ -289,8 +288,8 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// === READY HANDLER ===
-client.on('ready', async () => {
+// === READY ===
+client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 
     client.guilds.cache.forEach(guild => {
