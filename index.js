@@ -4,9 +4,9 @@ const path = require('path');
 
 // === CONFIG ===
 // Replace these with your actual values
-const token = 'YOUR_BOT_TOKEN';
-const LOG_CHANNEL_ID = 'YOUR_LOG_CHANNEL_ID';
-const CLIENT_ID = 'YOUR_CLIENT_ID';
+const token = process.env.token;
+const LOG_CHANNEL_ID = '1520333813794738246';
+const CLIENT_ID = '1513576938118189257';
 
 const client = new Client({
     intents: [
