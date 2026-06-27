@@ -140,11 +140,14 @@ client.on('messageCreate', async msg => {
             m => m.presence?.status === 'online'
         ).size;
 
-        const time = new Date().toLocaleTimeString();
+        const timeIE = new Date().toLocaleString("en-IE", {
+            timeZone: "Europe/Dublin",
+            hour12: false
+        });
 
         msg.reply(
             `Hello, how are you?\n` +
-            `Time: **${time}**\n` +
+            `Time: **${timeIE}**\n` +
             `People online: **${onlineCount}**`
         );
     }
@@ -267,9 +270,14 @@ client.on('interactionCreate', async interaction => {
         const member = await interaction.guild.members.fetch(user.id);
         await member.roles.add(ACCEPT_ROLE_ID);
 
-        let extra = '';
-        if (level !== null && level > 200) extra += ' (high lvl)';
-        if (winrate !== null && winrate > 70) extra += ' (high wr)';
+        let tags = '';
+        if (level !== null && level >= 200) tags += ' (high lvl)';
+        if (winrate !== null && winrate >= 70) tags += ' (high wr)';
+
+        const timeIE = new Date().toLocaleString("en-IE", {
+            timeZone: "Europe/Dublin",
+            hour12: false
+        });
 
         const announceChannel = interaction.guild.channels.cache.get(
             ACCEPT_ANNOUNCE_CHANNEL_ID
@@ -277,10 +285,11 @@ client.on('interactionCreate', async interaction => {
 
         if (announceChannel) {
             announceChannel.send(
-                `Welcome To House of Keys Clan!\n` +
+                `${user} Welcome To **House of Keys Clan!**\n` +
                 `We would appreciate it if you add **HK_** before your Roblox Username.\n` +
                 `**TAKE THE TAG**\n\n` +
-                `${user} ${extra}`
+                `Time: **${timeIE}**\n` +
+                `${tags}`
             );
         }
 
