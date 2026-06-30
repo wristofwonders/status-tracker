@@ -120,13 +120,14 @@ const commands = [
                .setRequired(false)
         ),
 
-    // === NEW COMMAND: /roleping ===
+    // === NEW COMMAND: /roleping (autocomplete version) ===
     new SlashCommandBuilder()
         .setName('roleping')
         .setDescription('Ping a role')
-        .addRoleOption(opt =>
+        .addStringOption(opt =>
             opt.setName('role')
                .setDescription('Role to ping')
+               .setAutocomplete(true)
                .setRequired(true)
         )
 ].map(c => c.toJSON());
@@ -235,6 +236,21 @@ client.on('presenceUpdate', (oldP, newP) => {
 
 // === INTERACTIONS ===
 client.on('interactionCreate', async interaction => {
+
+    // === AUTOCOMPLETE HANDLER ===
+    if (interaction.isAutocomplete()) {
+        if (interaction.commandName === 'roleping') {
+            const focused = interaction.options.getFocused().toLowerCase();
+
+            const roles = interaction.guild.roles.cache
+                .filter(r => r.name.toLowerCase().includes(focused))
+                .map(r => ({ name: r.name, value: r.id }))
+                .slice(0, 25);
+
+            return interaction.respond(roles);
+        }
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     // /statusstats
@@ -311,7 +327,8 @@ client.on('interactionCreate', async interaction => {
 
     // === NEW COMMAND: /roleping ===
     if (interaction.commandName === 'roleping') {
-        const role = interaction.options.getRole('role');
+        const roleId = interaction.options.getString('role');
+        const role = interaction.guild.roles.cache.get(roleId);
         const userId = interaction.user.id;
 
         const now = Date.now();
@@ -338,7 +355,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ content: 'Role ping sent!', ephemeral: true });
 
         interaction.channel.send(
-            `${interaction.user} pinged ${role}`
+            `${interaction.user} pinged <@&${role.id}>`
         );
     }
 });
