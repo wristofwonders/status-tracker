@@ -78,6 +78,9 @@ function endStatus(userId, callback) {
     );
 }
 
+// === COOLDOWN MAP ===
+const rolePingCooldown = new Map();
+
 // === SLASH COMMANDS ===
 const commands = [
     new SlashCommandBuilder()
@@ -309,6 +312,28 @@ client.on('interactionCreate', async interaction => {
     // === NEW COMMAND: /roleping ===
     if (interaction.commandName === 'roleping') {
         const role = interaction.options.getRole('role');
+        const userId = interaction.user.id;
+
+        const now = Date.now();
+        const data = rolePingCooldown.get(userId) || { count: 0, lastPing: 0 };
+
+        if (data.count >= 2) {
+            const timePassed = now - data.lastPing;
+
+            if (timePassed < 3 * 60 * 1000) {
+                const remaining = Math.ceil((3 * 60 * 1000 - timePassed) / 1000);
+                return interaction.reply({
+                    content: `⏳ You must wait **${remaining} seconds** before pinging another role.`,
+                    ephemeral: true
+                });
+            } else {
+                data.count = 0;
+            }
+        }
+
+        data.count++;
+        data.lastPing = now;
+        rolePingCooldown.set(userId, data);
 
         await interaction.reply({ content: 'Role ping sent!', ephemeral: true });
 
