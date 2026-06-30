@@ -115,6 +115,16 @@ const commands = [
             opt.setName('winrate')
                .setDescription('Player winrate (0-100)')
                .setRequired(false)
+        ),
+
+    // === NEW COMMAND: /roleping ===
+    new SlashCommandBuilder()
+        .setName('roleping')
+        .setDescription('Ping a role')
+        .addRoleOption(opt =>
+            opt.setName('role')
+               .setDescription('Role to ping')
+               .setRequired(true)
         )
 ].map(c => c.toJSON());
 
@@ -294,6 +304,17 @@ client.on('interactionCreate', async interaction => {
         }
 
         interaction.reply(`${user.tag} has been accepted and given the role.`);
+    }
+
+    // === NEW COMMAND: /roleping ===
+    if (interaction.commandName === 'roleping') {
+        const role = interaction.options.getRole('role');
+
+        await interaction.reply({ content: 'Role ping sent!', ephemeral: true });
+
+        interaction.channel.send(
+            `${interaction.user} pinged ${role}`
+        );
     }
 });
 
