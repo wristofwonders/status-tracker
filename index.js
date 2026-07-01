@@ -290,40 +290,45 @@ client.on('interactionCreate', async interaction => {
         interaction.channel.send(text);
     }
 
-    // /accept
-    if (interaction.commandName === 'accept') {
-        const user = interaction.options.getUser('user');
-        const level = interaction.options.getInteger('level');
-        const winrate = interaction.options.getInteger('winrate');
+   // /accept
+if (interaction.commandName === 'accept') {
+    const user = interaction.options.getUser('user');
+    const level = interaction.options.getInteger('level');
+    const winrate = interaction.options.getInteger('winrate');
 
-        const member = await interaction.guild.members.fetch(user.id);
-        await member.roles.add(ACCEPT_ROLE_ID);
+    const member = await interaction.guild.members.fetch(user.id);
 
-        let tags = '';
-        if (level !== null && level >= 200) tags += ' (high lvl)';
-        if (winrate !== null && winrate >= 70) tags += ' (high wr)';
+    // Give ONLY these two roles
+    await member.roles.add([
+        '1513575649204502750',
+        '1513566041106681926'
+    ]);
 
-        const timeIE = new Date().toLocaleString("en-IE", {
-            timeZone: "Europe/Dublin",
-            hour12: false
-        });
+    let tags = '';
+    if (level !== null && level >= 200) tags += ' (high lvl)';
+    if (winrate !== null && winrate >= 70) tags += ' (high wr)';
 
-        const announceChannel = interaction.guild.channels.cache.get(
-            ACCEPT_ANNOUNCE_CHANNEL_ID
+    const timeIE = new Date().toLocaleString("en-IE", {
+        timeZone: "Europe/Dublin",
+        hour12: false
+    });
+
+    const announceChannel = interaction.guild.channels.cache.get(
+        ACCEPT_ANNOUNCE_CHANNEL_ID
+    );
+
+    if (announceChannel) {
+        announceChannel.send(
+            `${user} Welcome To **House of Keys Clan!**\n` +
+            `We would appreciate it if you add **HK_** before your Roblox Username.\n` +
+            `**TAKE THE TAG**\n\n` +
+            `Time: **${timeIE}**\n` +
+            `${tags}`
         );
-
-        if (announceChannel) {
-            announceChannel.send(
-                `${user} Welcome To **House of Keys Clan!**\n` +
-                `We would appreciate it if you add **HK_** before your Roblox Username.\n` +
-                `**TAKE THE TAG**\n\n` +
-                `Time: **${timeIE}**\n` +
-                `${tags}`
-            );
-        }
-
-        interaction.reply(`${user.tag} has been accepted and given the role.`);
     }
+
+    interaction.reply(`${user.tag} has been accepted and given the roles.`);
+}
 
     // === NEW COMMAND: /roleping ===
     if (interaction.commandName === 'roleping') {
