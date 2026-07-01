@@ -1,3 +1,7 @@
+// ===============================
+// HK BOT — CLEAN FULL REWRITE
+// ===============================
+
 const {
     Client,
     GatewayIntentBits,
@@ -6,17 +10,28 @@ const {
     Routes,
     SlashCommandBuilder
 } = require('discord.js');
+
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
-// === CONFIG ===
+// ===============================
+// CONFIG
+// ===============================
 const token = process.env.TOKEN;
 const CLIENT_ID = '1513576938118189257';
+
 const LOG_CHANNEL_ID = '1510333813794738246';
-const ACCEPT_ROLE_ID = '1513576678486573258';
 const ACCEPT_ANNOUNCE_CHANNEL_ID = '1513632041277587658';
 
-// === CLIENT ===
+// Accept roles
+const ACCEPT_ROLES = [
+    '1513575649204502750',
+    '1513566041106681926'
+];
+
+// ===============================
+// CLIENT
+// ===============================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -28,7 +43,9 @@ const client = new Client({
     ]
 });
 
-// === DATABASE ===
+// ===============================
+// DATABASE
+// ===============================
 const dbPath = path.resolve(__dirname, 'status.db');
 const db = new sqlite3.Database(dbPath);
 
@@ -78,10 +95,9 @@ function endStatus(userId, callback) {
     );
 }
 
-// === COOLDOWN MAP ===
-const rolePingCooldown = new Map();
-
-// === SLASH COMMANDS ===
+// ===============================
+// SLASH COMMANDS
+// ===============================
 const commands = [
     new SlashCommandBuilder()
         .setName('statusstats')
@@ -103,7 +119,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('accept')
-        .setDescription('Accept a player and give them the role')
+        .setDescription('Accept a player and give them the roles')
         .addUserOption(opt =>
             opt.setName('user')
                .setDescription('User to accept')
@@ -120,7 +136,6 @@ const commands = [
                .setRequired(false)
         ),
 
-    // === NEW COMMAND: /roleping (autocomplete version) ===
     new SlashCommandBuilder()
         .setName('roleping')
         .setDescription('Ping a role')
@@ -133,6 +148,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
+
 (async () => {
     try {
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
@@ -142,9 +158,12 @@ const rest = new REST({ version: '10' }).setToken(token);
     }
 })();
 
-// === MESSAGE HANDLER ===
+// ===============================
+// MESSAGE HANDLER
+// ===============================
 client.on('messageCreate', async msg => {
     if (msg.author.bot) return;
+    if (!msg.guild) return;
 
     ensureUserRow(msg.author.id);
     db.run('UPDATE status_tracker SET messages = messages + 1 WHERE userId = ?', [msg.author.id]);
@@ -167,7 +186,9 @@ client.on('messageCreate', async msg => {
     }
 });
 
-// === VOICE TRACKING ===
+// ===============================
+// VOICE TRACKING
+// ===============================
 client.on('voiceStateUpdate', (oldState, newState) => {
     const userId = newState.id;
     ensureUserRow(userId);
@@ -198,7 +219,9 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     );
 });
 
-// === PRESENCE TRACKING ===
+// ===============================
+// PRESENCE TRACKING
+// ===============================
 client.on('presenceUpdate', (oldP, newP) => {
     if (!newP || !newP.guild) return;
 
@@ -234,10 +257,12 @@ client.on('presenceUpdate', (oldP, newP) => {
     });
 });
 
-// === INTERACTIONS ===
+// ===============================
+// INTERACTIONS
+// ===============================
 client.on('interactionCreate', async interaction => {
 
-    // === AUTOCOMPLETE HANDLER ===
+    // AUTOCOMPLETE
     if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'roleping') {
             const focused = interaction.options.getFocused().toLowerCase();
@@ -287,50 +312,53 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'say') {
         const text = interaction.options.getString('text');
         await interaction.reply({ content: 'Message sent!', ephemeral: true });
-        interaction.channel.send(text);
+        await interaction.channel.send(text);
     }
 
-   // /accept
-if (interaction.commandName === 'accept') {
-    const user = interaction.options.getUser('user');
-    const level = interaction.options.getInteger('level');
-    const winrate = interaction.options.getInteger('winrate');
+    // /accept
+    if (interaction.commandName === 'accept') {
+        const user = interaction.options.getUser('user');
+        const level = interaction.options.getInteger('level');
+        const winrate = interaction.options.getInteger('winrate');
 
-    const member = await interaction.guild.members.fetch(user.id);
+        const member = await interaction.guild.members.fetch(user.id);
 
-    // Give ONLY these two roles
-    await member.roles.add([
-        '1513575649204502750',
-        '1513566041106681926'
-    ]);
+        try {
+            await member.roles.add(ACCEPT_ROLES);
+        } catch (err) {
+            return interaction.reply({
+                content: "❌ I don't have permission to give those roles.",
+                ephemeral: true
+            });
+        }
 
-    let tags = '';
-    if (level !== null && level >= 200) tags += ' (high lvl)';
-    if (winrate !== null && winrate >= 70) tags += ' (high wr)';
+        let tags = '';
+        if (level !== null && level >= 200) tags += ' (high lvl)';
+        if (winrate !== null && winrate >= 70) tags += ' (high wr)';
 
-    const timeIE = new Date().toLocaleString("en-IE", {
-        timeZone: "Europe/Dublin",
-        hour12: false
-    });
+        const timeIE = new Date().toLocaleString("en-IE", {
+            timeZone: "Europe/Dublin",
+            hour12: false
+        });
 
-    const announceChannel = interaction.guild.channels.cache.get(
-        ACCEPT_ANNOUNCE_CHANNEL_ID
-    );
-
-    if (announceChannel) {
-        announceChannel.send(
-            `${user} Welcome To **House of Keys Clan!**\n` +
-            `We would appreciate it if you add **HK_** before your Roblox Username.\n` +
-            `**TAKE THE TAG**\n\n` +
-            `Time: **${timeIE}**\n` +
-            `${tags}`
+        const announceChannel = interaction.guild.channels.cache.get(
+            ACCEPT_ANNOUNCE_CHANNEL_ID
         );
+
+        if (announceChannel) {
+            announceChannel.send(
+                `${user} Welcome To **House of Keys Clan!**\n` +
+                `We would appreciate it if you add **HK_** before your Roblox Username.\n` +
+                `**TAKE THE TAG**\n\n` +
+                `Time: **${timeIE}**\n` +
+                `${tags}`
+            );
+        }
+
+        interaction.reply(`${user.tag} has been accepted and given the roles.`);
     }
 
-    interaction.reply(`${user.tag} has been accepted and given the roles.`);
-}
-
-    // === NEW COMMAND: /roleping ===
+    // /roleping
     if (interaction.commandName === 'roleping') {
         const roleId = interaction.options.getString('role');
         const role = interaction.guild.roles.cache.get(roleId);
@@ -365,7 +393,9 @@ if (interaction.commandName === 'accept') {
     }
 });
 
-// === READY ===
+// ===============================
+// READY
+// ===============================
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 
